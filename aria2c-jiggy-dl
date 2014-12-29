@@ -1,0 +1,146 @@
+#!/usr/bin/perl
+# http://mirror.debian.org/staticlist/Mirrors.masterlist
+# http://geekofpassage.blogspot.com/
+# (C) 2013 Scott Edwards <supadupa@gmail.com>
+#
+# jigdo cheating downloader.
+# uses aria2
+# hint: using "apt-get install balance" on 127.0.0.1:3128 to spread the load on all my squid servers.
+# pass aria2 a list of mirrors (useful for 1M+ chunks)
+# Note: uses 20 threads, to try and keep all (9 of my) proxy servers loaded with 2 urls concurrently at all times.
+
+if (0 eq scalar(@ARGV)) {
+	die "Pass at least one .jigdo file. All download files go here. Later, feed jigdo this directory for cache.";
+}
+
+use File::Basename qw(basename);
+use List::Util qw/shuffle/;
+use Data::Dumper;
+use strict;
+use warnings;
+
+my $THREADS = 6;
+
+# crazy ninja random sort.
+# use keys, since the order is not dterministic.
+my @mirrors = qw(
+	http://mirrors.kernel.org/debian
+	http://ftp.keystealth.org/debian
+	http://mirrors.usc.edu/debian
+	http://mirrors.syringanetworks.net/debian
+	http://mirrors.usu.edu/debian
+	http://mirrors.xmission.com/debian
+);
+my @childs;
+my $pkg;
+my $pkgs;
+
+
+sub dq_dot_jigdo
+{
+	my $failsafe_servers = {};
+	my $file = shift;
+#	open(FOO, '-|', "cat", '-n', $file);
+	open (J,"-|",qw(gzip -dc),$file) or die "Cannot gzip -dc $file: $!";
+
+	while(<J>) {
+		chomp;
+		last if $_ eq "[Parts]";
+	}
+	while(<J>) {
+		if (-1 eq index($_,":")) {
+			close J;
+			last;
+		}
+		chomp;
+		$pkg = basename $_;
+		next if exists $pkgs->{$pkg};
+		if ( (!-e $pkg) or (-s "$pkg.aria2") ) {
+			my $l = "/".substr($_,1+index($_,":"));
+			$pkgs->{$pkg}=$l;
+		}
+	}
+
+	my @pkgs = values %{$pkgs};
+	undef $pkgs;
+	afork (\@pkgs,$THREADS,\&leech);
+
+# TODO:  uh... make use of this I guess...
+# echo "$1=="|tr '_-' '/+'|base64 -d|hexdump -e '16/1 "%02x" "\n"'
+}
+
+for (@ARGV) {
+	dq_dot_jigdo($_);
+}
+
+sub mfork ($$&) {
+	my ($count, $max, $code) = @_;
+	foreach my $c (1 .. $count) {
+		wait unless $c <= $max;
+		die "Fork failed: $!\n" unless defined (my $pid = fork);
+		exit $code -> ($c) unless $pid;
+	}
+	1 until -1 == wait;
+}
+
+# sub afork (\@$&) {
+	sub afork {
+		my ($data, $max, $code) = @_;
+		my $c = 0;
+		foreach my $data (@$data) {
+			wait unless ++ $c <= $max;
+			die "Fork failed: $!\n" unless defined (my $pid = fork);
+			exit $code -> ($data) unless $pid;
+		}
+		1 until -1 == wait;
+}
+=head1
+#by Abigail of perlmonks.org
+#Some times you have a need to fork of several children, but you want to
+#limit the maximum number of children that are alive at one time. Here
+#are two little subroutines that might help you, mfork and afork. They are very similar.
+#They take three arguments,
+#and differ in the first argument. For mfork, the first
+#argument is a number, indicating how many children should be forked. For
+#afork, the first argument is an array - a child will be
+#forked for each array element. The second argument indicates the maximum
+#number of children that may be alive at one time. The third argument is a
+#code reference; this is the code that will be executed by the child. One
+#argument will be given to this code fragment; for mfork it will be an increasing number,
+#starting at one. Each next child gets the next number. For afork, the array element is
+#passed. Note that this code will assume no other children will be spawned,
+#and that $SIG {CHLD} hasn't been set to IGNORE.
+=cut
+
+sub my_aria2c {
+	my $ec=-1;
+	my $urls = join(" ",@_);
+	#$ec = system qq(aria2c -x5 -q -k1M --all-proxy="http://127.0.0.1:128" $urls);
+	$ec = system qq(aria2c -l log-aria2.$$ -x5 -q -k10M $urls);
+
+	if (0 eq $ec) {
+		print "$$ OK: $_[0]\n";
+		unlink "log-aria2.$$";
+		return $ec;
+	}
+	$ec = $ec >> 8;
+	print "Error($ec): $_[0]\n";
+	open L,"< log-aria2.$$" or return $ec;
+	print "$$ $_" while <L>;
+	close L;
+	return $ec;
+}
+
+sub leech {
+	my $url = shift;
+	my @urls;
+	for (shuffle @mirrors) {
+		push @urls,$_.$url;
+	}
+	my $ec;
+	$ec = my_aria2c(@urls);
+	if (0 eq $ec) { return 0 }
+	$ec = my_aria2c("http://snapshot.debian.org/archive/debian/20130615T222935Z".$url);
+	return $ec;
+}
+
