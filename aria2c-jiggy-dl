@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# git clone https://code.google.com/p/aria2c-jiggy-dl/ 
+
 # http://mirror.debian.org/staticlist/Mirrors.masterlist
 # http://geekofpassage.blogspot.com/
 # (C) 2013 Scott Edwards <supadupa@gmail.com>
@@ -23,7 +25,8 @@ my $THREADS = 6;
 
 # crazy ninja random sort.
 # use keys, since the order is not dterministic.
-my @mirrors = qw(
+sub mirrors {
+return shuffle qw(
 	http://mirrors.kernel.org/debian
 	http://ftp.keystealth.org/debian
 	http://mirrors.usc.edu/debian
@@ -31,9 +34,16 @@ my @mirrors = qw(
 	http://mirrors.usu.edu/debian
 	http://mirrors.xmission.com/debian
 );
+}
+
+my @jigdo = qw(
+	http://cdimage.debian.org/debian-cd/7.8.0/amd64/jigdo-bd/debian-7.8.0-amd64-BD-1.jigdo
+	http://cdimage.debian.org/debian-cd/7.8.0/amd64/jigdo-bd/debian-7.8.0-amd64-BD-2.jigdo
+);
 my @childs;
 my $pkg;
 my $pkgs;
+my $snapshot_url = '';
 
 
 sub dq_dot_jigdo
@@ -48,11 +58,12 @@ sub dq_dot_jigdo
 		last if $_ eq "[Parts]";
 	}
 	while(<J>) {
-		if (-1 eq index($_,":")) {
-			close J;
-			last;
-		}
+		next unless defined $_;
 		chomp;
+		last if $_ eq "[Servers]";
+		if (-1 eq index($_,":")) {
+			next;
+		}
 		$pkg = basename $_;
 		next if exists $pkgs->{$pkg};
 		if ( (!-e $pkg) or (-s "$pkg.aria2") ) {
@@ -60,9 +71,24 @@ sub dq_dot_jigdo
 			$pkgs->{$pkg}=$l;
 		}
 	}
-
+	while(<J>) {
+		next unless defined $_;
+		chomp;
+		if (-1 eq index($_,":")) {
+			next;
+		}
+		if ($_ =~ m!(http.?://snapshot.debian.org.*)!) {
+			$snapshot_url = $1;
+			last;
+		}
+	}
+	close J;
 	my @pkgs = values %{$pkgs};
 	undef $pkgs;
+
+	-d 'pool' || mkdir 'pool';
+	-d 'pool/incoming' || mkdir 'pool/incoming';
+
 	afork (\@pkgs,$THREADS,\&leech);
 
 # TODO:  uh... make use of this I guess...
@@ -114,9 +140,11 @@ sub mfork ($$&) {
 
 sub my_aria2c {
 	my $ec=-1;
+	my $self = shift;
 	my $urls = join(" ",@_);
 	#$ec = system qq(aria2c -x5 -q -k1M --all-proxy="http://127.0.0.1:128" $urls);
-	$ec = system qq(aria2c -l log-aria2.$$ -x5 -q -k10M $urls);
+
+	$ec = system qq(aria2c -d $self->{dotdeb_save_dir} -l pool/log-aria2.$$ -x5 -q -k10M $urls);
 
 	if (0 eq $ec) {
 		print "$$ OK: $_[0]\n";
@@ -133,14 +161,41 @@ sub my_aria2c {
 
 sub leech {
 	my $url = shift;
+	my $self = {};
+	@{ $self->{dir_branches} } = split(/\//,$url);
+	$self->{dotdeb_basename} = pop(@{ $self->{dir_branches} });
+	shift @{ $self->{dir_branches} };
+	$self->{dotdeb_dirname} = join("/" => @{ $self->{dir_branches} });
+
+	my $save_dir	=	"build-dir/" . $self->{dotdeb_dirname};
+	-d $save_dir	||	system("mkdir -p ".quotemeta($save_dir));
+	$self->{dotdeb_save_dir} = $save_dir;
+
+	my $save_to	=	"$save_dir/" . $self->{dotdeb_basename}; 
+	$self->{dotdeb_save_to} = $save_to;
+
+	return 0 if -s $save_to;
+
 	my @urls;
-	for (shuffle @mirrors) {
+	for (mirrors()) {
 		push @urls,$_.$url;
 	}
 	my $ec;
-	$ec = my_aria2c(@urls);
+	@{ $self->{dir_caches}} = qw( local-apt-archives debian-730-amd64-1bd2 );
+	for (@{ $self->{dir_caches}}) {
+		$save_dir	= "$_/" . $self->{dotdeb_dirname};
+		$save_to	= "$save_dir/" . $self->{dotdeb_basename}; 
+		next unless -s $save_to;
+		push @{ $self->{dotdeb_found}->{ $self->{dotdeb_basename} } }, $save_to;
+		system ("ls -l ".quotemeta($save_to)); 
+		system ("rsync -a ".quotemeta($save_to)." ".quotemeta("build-dir/".$self->{dotdeb_dirname}."/") ); 
+		return 0;
+	}
+
+	$ec = my_aria2c($self,@urls);
 	if (0 eq $ec) { return 0 }
-	$ec = my_aria2c("http://snapshot.debian.org/archive/debian/20130615T222935Z".$url);
+	# $ec = my_aria2c("http://snapshot.debian.org/archive/debian/20130615T222935Z".$url);
+	# warn "$snapshot_url/$url";
+	$ec = my_aria2c($self,"$snapshot_url/$url");
 	return $ec;
 }
-
