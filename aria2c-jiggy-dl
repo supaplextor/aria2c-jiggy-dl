@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# git clone https://code.google.com/p/aria2c-jiggy-dl/ 
+# git clone https://github.com/supaplextor/aria2c-jiggy-dl/ 
 
 # http://mirror.debian.org/staticlist/Mirrors.masterlist
 # http://geekofpassage.blogspot.com/
@@ -12,7 +12,7 @@
 # Note: uses 20 threads, to try and keep all (9 of my) proxy servers loaded with 2 urls concurrently at all times.
 
 if (0 eq scalar(@ARGV)) {
-	die "Pass at least one .jigdo file. All download files go here. Later, feed jigdo this directory for cache.";
+	die "Pass at least one .jigdo file. All download files go here. Later, feed jigdo build-dir directory for cache.";
 }
 
 use File::Basename qw(basename);
@@ -21,25 +21,29 @@ use Data::Dumper;
 use strict;
 use warnings;
 
-my $THREADS = 6;
+my $THREADS = 20;
+
+my $site = "";
+my $uri = "";
 
 # crazy ninja random sort.
 # use keys, since the order is not dterministic.
 sub mirrors {
-return shuffle qw(
-	http://mirrors.kernel.org/debian
-	http://ftp.keystealth.org/debian
-	http://mirrors.usc.edu/debian
-	http://mirrors.syringanetworks.net/debian
-	http://mirrors.usu.edu/debian
-	http://mirrors.xmission.com/debian
-);
+	my @SITES;
+	open (MIRRORS,"-|",qw(cat),"Mirrors.masterlist") or die "Cannot open $!";
+	while(<MIRRORS>) {
+		chomp;
+		if ($_ =~ m/^Site: (.*)$/) {
+			$site = $1;
+		}
+		if ($_ =~ m/^Archive-http: (.*)$/) {
+			$uri = $1;
+			push(@SITES,"http://$site$uri");
+		}
+	}
+	return shuffle @SITES;
 }
 
-my @jigdo = qw(
-	http://cdimage.debian.org/debian-cd/7.8.0/amd64/jigdo-bd/debian-7.8.0-amd64-BD-1.jigdo
-	http://cdimage.debian.org/debian-cd/7.8.0/amd64/jigdo-bd/debian-7.8.0-amd64-BD-2.jigdo
-);
 my @childs;
 my $pkg;
 my $pkgs;
@@ -148,8 +152,11 @@ sub my_aria2c {
 
 	if (0 eq $ec) {
 		print "$$ OK: $_[0]\n";
-		unlink "log-aria2.$$";
+		unlink "pool/log-aria2.$$" or warn "Cannot unlink pool/log-aria2.$$: $!";;
 		return $ec;
+	} else {
+		warn "aria2c returned exit code $ec and no idea why...";
+		die "I Quit!";
 	}
 	$ec = $ec >> 8;
 	print "Error($ec): $_[0]\n";
