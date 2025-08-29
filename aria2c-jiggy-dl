@@ -22,12 +22,9 @@ use strict;
 use warnings;
 
 my $THREADS = 20;
-
 my $site = "";
 my $uri = "";
 
-# crazy ninja random sort.
-# use keys, since the order is not dterministic.
 sub mirrors {
 	my @SITES;
 	open (MIRRORS,"-|",qw(cat),"Mirrors.masterlist") or die "Cannot open $!";
@@ -41,6 +38,8 @@ sub mirrors {
 			push(@SITES,"http://$site$uri");
 		}
 	}
+# crazy ninja random sort.
+# use keys, since the order is not dterministic.
 	return shuffle @SITES;
 }
 
@@ -114,15 +113,15 @@ sub mfork ($$&) {
 }
 
 # sub afork (\@$&) {
-	sub afork {
-		my ($data, $max, $code) = @_;
-		my $c = 0;
-		foreach my $data (@$data) {
-			wait unless ++ $c <= $max;
-			die "Fork failed: $!\n" unless defined (my $pid = fork);
-			exit $code -> ($data) unless $pid;
-		}
-		1 until -1 == wait;
+sub afork {
+	my ($data, $max, $code) = @_;
+	my $c = 0;
+	foreach my $data (@$data) {
+		wait unless ++ $c <= $max;
+		die "Fork failed: $!\n" unless defined (my $pid = fork);
+		exit $code -> ($data) unless $pid;
+	}
+	1 until -1 == wait;
 }
 =head1
 #by Abigail of perlmonks.org
@@ -160,7 +159,7 @@ sub my_aria2c {
 	}
 	$ec = $ec >> 8;
 	print "Error($ec): $_[0]\n";
-	open L,"< log-aria2.$$" or return $ec;
+	open L,"< pool/log-aria2.$$" or return $ec;
 	print "$$ $_" while <L>;
 	close L;
 	return $ec;
