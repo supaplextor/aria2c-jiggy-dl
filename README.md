@@ -1,4 +1,4 @@
-* <code>git clone https://github.com/supaplextor/aria2c-jiggy-dl.git</code>
+* <code>git clone https://github.com/supaplextor/aria2c-jiggy-dl.git ; cd aria2c-jiggy-dl</code>
 * <code>sudo snap install aria2c</code>
 * <code>sudo apt update; sudo apt install jigdo-file</code>
 * <code>./aria2c-jiggy-dl file1-dvd.jigdo</code>
