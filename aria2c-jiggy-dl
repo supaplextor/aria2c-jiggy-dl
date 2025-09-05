@@ -27,7 +27,7 @@ my $uri = "";
 
 sub mirrors {
 	my @SITES;
-	open (MIRRORS,"-|",qw(cat),"Mirrors.masterlist") or die "Cannot open $!";
+	open (MIRRORS,"<","Mirrors.masterlist") or die "Cannot open $!";
 	while(<MIRRORS>) {
 		chomp;
 		if ($_ =~ m/^Site: (.*)$/) {
@@ -39,7 +39,7 @@ sub mirrors {
 		}
 	}
 # crazy ninja random sort.
-# use keys, since the order is not dterministic.
+# use keys, since the order is not deterministic.
 	return shuffle @SITES;
 }
 
@@ -48,14 +48,11 @@ my $pkg;
 my $pkgs;
 my $snapshot_url = '';
 
-
 sub dq_dot_jigdo
 {
 	my $failsafe_servers = {};
 	my $file = shift;
-#	open(FOO, '-|', "cat", '-n', $file);
 	open (J,"-|",qw(gzip -dc),$file) or die "Cannot gzip -dc $file: $!";
-
 	while(<J>) {
 		chomp;
 		last if $_ eq "[Parts]";
@@ -154,7 +151,7 @@ sub my_aria2c {
 		unlink "pool/log-aria2.$$" or warn "Cannot unlink pool/log-aria2.$$: $!";;
 		return $ec;
 	} else {
-		warn "aria2c returned exit code $ec and no idea why...";
+		warn "aria2c returned exit code $ec and no idea why... See also pool/log-aria2.$$";
 		die "I Quit!";
 	}
 	$ec = $ec >> 8;
