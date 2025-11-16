@@ -12,7 +12,7 @@
 # Note: uses 20 threads, to try and keep all (9 of my) proxy servers loaded with 2 urls concurrently at all times.
 
 if (0 eq scalar(@ARGV)) {
-	die "Pass at least one .jigdo file. All download files go here. Later, feed jigdo build-dir directory for cache.";
+	die "Pass at least one .jigdo file. All download files go here. Later, feed jigdo-lite build-dir directory for cache.";
 }
 
 use File::Basename qw(basename);
@@ -31,23 +31,15 @@ sub mirrors {
 	if (scalar(@SITES) > 0) {
 		return
 	}
-	my @S;
 	my $parser = HTML::TokeParser::Simple->new("list");
 	my $tag;
-
-#	print "Found HREFs:\n";
-
-	# Loop through all the 'a' start tags
 	while ( $tag = $parser->get_tag('a') ) {
-		# Check if the 'href' attribute exists for the found 'a' tag
 		if ( my $href = $tag->get_attr('href') ) {
-#			print "$href\n";
 			if ($href =~ m/\/debian/) {
-				push(@S,$href)
+				push(@SITES,$href)
 			}
 		}
 	}
-	@SITES = shuffle @S;
 	return
 }
 
@@ -111,6 +103,12 @@ if (!-s "list") {
 	}
 }
 mirrors();
+if (!-e "build-dir") {
+	mkdir("build-dir");
+}
+if (!-e "pool") { # logs
+	mkdir("pool");
+}
 for (@ARGV) {
 	dq_dot_jigdo($_);
 }
@@ -178,6 +176,10 @@ sub my_aria2c {
 	return $ec;
 }
 
+#sub mountpoints {
+#	if (open my $fh, '<', ) {
+#}
+
 sub leech {
 	my $url = shift;
 	my $self = {};
@@ -193,10 +195,32 @@ sub leech {
 	my $save_to	=	"$save_dir/" . $self->{dotdeb_basename}; 
 	$self->{dotdeb_save_to} = $save_to;
 
+#	warn $save_to;
+
 	return 0 if -s $save_to;
 
+	if (open my $fh, '<', '/proc/mounts') {
+		for(<$fh>) {
+			chomp;
+			next unless $_;
+			$_ =~ m/[^ ]+ ([^ ]+) (.*)/;
+			if (-s "$2/" . $self->{dotdeb_dirname}) {
+				my $r = "rsync -vP $2/" .quotemeta($self->{dotdeb_dirname}) ." " .quotemeta($save_to);
+				warn "Running $r";
+				my $ec = system qq($r);
+				warn $ec if $ec;
+			}
+		}
+	} else {
+		die "Cannot open /proc/mounts for reading: $!";
+	}
+
+# So it's not in the pool directory, we have to check 
+# mount points to it + pool/etc/foo.deb.	
+#	system("rsync -vP " + quotemeta(""))
+
 	my @urls;
-	for (@SITES) {
+	for (shuffle(@SITES)) {
 		push @urls,$_.$url;
 	}
 	my $ec;
