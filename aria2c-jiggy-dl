@@ -18,29 +18,37 @@ if (0 eq scalar(@ARGV)) {
 use File::Basename qw(basename);
 use List::Util qw/shuffle/;
 use Data::Dumper;
+use HTML::TokeParser::Simple;
 use strict;
 use warnings;
 
-my $THREADS = 20;
+my $THREADS = 10;
 my $site = "";
 my $uri = "";
+my @SITES;
 
 sub mirrors {
-	my @SITES;
-	open (MIRRORS,"<","Mirrors.masterlist") or die "Cannot open $!";
-	while(<MIRRORS>) {
-		chomp;
-		if ($_ =~ m/^Site: (.*)$/) {
-			$site = $1;
-		}
-		if ($_ =~ m/^Archive-http: (.*)$/) {
-			$uri = $1;
-			push(@SITES,"http://$site$uri");
+	if (scalar(@SITES) > 0) {
+		return
+	}
+	my @S;
+	my $parser = HTML::TokeParser::Simple->new("list");
+	my $tag;
+
+#	print "Found HREFs:\n";
+
+	# Loop through all the 'a' start tags
+	while ( $tag = $parser->get_tag('a') ) {
+		# Check if the 'href' attribute exists for the found 'a' tag
+		if ( my $href = $tag->get_attr('href') ) {
+#			print "$href\n";
+			if ($href =~ m/\/debian/) {
+				push(@S,$href)
+			}
 		}
 	}
-# crazy ninja random sort.
-# use keys, since the order is not deterministic.
-	return shuffle @SITES;
+	@SITES = shuffle @S;
+	return
 }
 
 my @childs;
@@ -84,10 +92,7 @@ sub dq_dot_jigdo
 	}
 	close J;
 	my @pkgs = values %{$pkgs};
-	undef $pkgs;
-
-	-d 'pool' || mkdir 'pool';
-	-d 'pool/incoming' || mkdir 'pool/incoming';
+	undef $pkgs; 
 
 	afork (\@pkgs,$THREADS,\&leech);
 
@@ -95,6 +100,17 @@ sub dq_dot_jigdo
 # echo "$1=="|tr '_-' '/+'|base64 -d|hexdump -e '16/1 "%02x" "\n"'
 }
 
+my $ec=-1;
+if (!-s "list") {
+	$ec = system qq(aria2c https://www.debian.org/mirror/list );
+
+	if (0 eq $ec) {
+		# success
+	} else {
+		die ("aria2c exit code $ec.");
+	}
+}
+mirrors();
 for (@ARGV) {
 	dq_dot_jigdo($_);
 }
@@ -180,7 +196,7 @@ sub leech {
 	return 0 if -s $save_to;
 
 	my @urls;
-	for (mirrors()) {
+	for (@SITES) {
 		push @urls,$_.$url;
 	}
 	my $ec;
