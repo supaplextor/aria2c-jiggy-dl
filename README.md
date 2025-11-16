@@ -2,4 +2,4 @@
 * <code>sudo snap install aria2c</code>
 * <code>sudo apt update; sudo apt install jigdo-file rsync</code>
 * <code>./aria2c-jiggy-dl file1-dvd.jigdo</code>
-* <code>jigdo-file file1-dvd.jigdo</code> Note, you'll need the template file in the same directory.
+* <code>jigdo-lite file1-dvd.jigdo</code> Note, you'll need the template file in the same directory.
