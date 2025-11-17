@@ -161,7 +161,7 @@ sub my_aria2c {
 	$ec = system qq(aria2c -d $self->{dotdeb_save_dir} -l pool/log-aria2.$$ -x5 -q -k10M $urls);
 
 	if (0 eq $ec) {
-		print "$$ OK: $_[0]\n";
+		print "$$ OK: $_[0] \n";
 		unlink "pool/log-aria2.$$" or warn "Cannot unlink pool/log-aria2.$$: $!";;
 		return $ec;
 	} else {
@@ -176,9 +176,44 @@ sub my_aria2c {
 	return $ec;
 }
 
-#sub mountpoints {
-#	if (open my $fh, '<', ) {
-#}
+sub mountpoints {
+	my $self = shift;
+	if (open my $fh, '<', '/proc/mounts') {
+		while(<$fh>) {
+			chomp;
+			next unless $_;
+#
+# supaplex@wiseguy:~/usr/src/github-by-user/supaplextor/aria2c-jiggy-dl$ tail /proc/mounts 
+# /dev/loop124 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-10.0.0-i386-DVD-3 iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
+# /dev/loop125 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-13.0.0-amd64-DVD-8 iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
+# /dev/loop126 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-12.11.0-amd64-DVD-1 iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
+# /dev/loop127 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-mac-13.2.0-amd64-netinst iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
+# /dev/loop128 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-9.11.0-i386-netinst iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
+# /dev/loop129 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-edu-13.0.0-amd64-netinst iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
+# 
+			if ($_ =~ m/[^ ]+ ([^ ]+) (.*)/) {
+#				mkdir -p ?
+				if (-s "$2/" . $self->{dotdeb_dirname}) {
+					# /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-edu-13.0.0-amd64-netinst
+					my $save_to	= $self->{dotdeb_save_dir} . "/" . $self->{dotdeb_basename};
+					my $r = "rsync -vP $2/"
+						.quotemeta($self->{dotdeb_dirname}) 
+						." " .quotemeta($save_to);
+					warn "Running $r";
+					my $ec = system qq($r);
+					warn $ec if $ec;
+				}
+			} else {
+				next;
+			}
+
+		}
+	} else {
+		die "Cannot open /proc/mounts for reading: $!";
+	}
+# So it's not in the pool directory, we have to check 
+# mount points to it + pool/etc/foo.deb.	
+}
 
 sub leech {
 	my $url = shift;
@@ -194,31 +229,17 @@ sub leech {
 
 	my $save_to	=	"$save_dir/" . $self->{dotdeb_basename}; 
 	$self->{dotdeb_save_to} = $save_to;
-
-#	warn $save_to;
-
 	return 0 if -s $save_to;
-
-	if (open my $fh, '<', '/proc/mounts') {
-		for(<$fh>) {
-			chomp;
-			next unless $_;
-			$_ =~ m/[^ ]+ ([^ ]+) (.*)/;
-			if (-s "$2/" . $self->{dotdeb_dirname}) {
-				my $r = "rsync -vP $2/" .quotemeta($self->{dotdeb_dirname}) ." " .quotemeta($save_to);
-				warn "Running $r";
-				my $ec = system qq($r);
-				warn $ec if $ec;
-			}
+	for(mountpoints($self)) {
+		if (-s "$_/" . $self->{dotdeb_basename}) {
+			warn "Found $_/" . $self->{dotdeb_basename};
+			my $ec;
+			$ec = system qq(mkdir -p build-dir/).quotemeta($self->{dotdeb_dirname});
+			warn $ec if $ec;
+			$ec = system qq(rsync -vP $_/).$self->{dotdeb_basename};
+			warn $ec if $ec;
 		}
-	} else {
-		die "Cannot open /proc/mounts for reading: $!";
 	}
-
-# So it's not in the pool directory, we have to check 
-# mount points to it + pool/etc/foo.deb.	
-#	system("rsync -vP " + quotemeta(""))
-
 	my @urls;
 	for (shuffle(@SITES)) {
 		push @urls,$_.$url;
