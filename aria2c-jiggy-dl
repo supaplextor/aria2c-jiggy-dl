@@ -22,36 +22,19 @@ use HTML::TokeParser::Simple;
 use strict;
 use warnings;
 
-my $THREADS = 10;
+my $THREADS = 1;
 my $site = "";
 my $uri = "";
-my @SITES;
-
-sub mirrors {
-	if (scalar(@SITES) > 0) {
-		return
-	}
-	my $parser = HTML::TokeParser::Simple->new("list");
-	my $tag;
-	while ( $tag = $parser->get_tag('a') ) {
-		if ( my $href = $tag->get_attr('href') ) {
-			if ($href =~ m/\/debian/) {
-				push(@SITES,$href)
-			}
-		}
-	}
-	return
-}
-
 my @childs;
 my $pkg;
 my $pkgs;
-my $snapshot_url = '';
 
 sub dq_dot_jigdo
 {
-	my $failsafe_servers = {};
+	my $self = shift;
 	my $file = shift;
+#	my $depth = 0;
+
 	open (J,"-|",qw(gzip -dc),$file) or die "Cannot gzip -dc $file: $!";
 	while(<J>) {
 		chomp;
@@ -60,7 +43,9 @@ sub dq_dot_jigdo
 	while(<J>) {
 		next unless defined $_;
 		chomp;
-		last if $_ eq "[Servers]";
+		if ($_ =~ m/^\[/) {
+			last;
+		}
 		if (-1 eq index($_,":")) {
 			next;
 		}
@@ -70,6 +55,8 @@ sub dq_dot_jigdo
 			my $l = "/".substr($_,1+index($_,":"));
 			$pkgs->{$pkg}=$l;
 		}
+#		$depth++;
+#		last if ($depth > 30);
 	}
 	while(<J>) {
 		next unless defined $_;
@@ -78,39 +65,12 @@ sub dq_dot_jigdo
 			next;
 		}
 		if ($_ =~ m!(http.?://snapshot.debian.org.*)!) {
-			$snapshot_url = $1;
 			last;
 		}
 	}
 	close J;
 	my @pkgs = values %{$pkgs};
-	undef $pkgs; 
-
-	afork (\@pkgs,$THREADS,\&leech);
-
-# TODO:  uh... make use of this I guess...
-# echo "$1=="|tr '_-' '/+'|base64 -d|hexdump -e '16/1 "%02x" "\n"'
-}
-
-my $ec=-1;
-if (!-s "list") {
-	$ec = system qq(aria2c https://www.debian.org/mirror/list );
-
-	if (0 eq $ec) {
-		# success
-	} else {
-		die ("aria2c exit code $ec.");
-	}
-}
-mirrors();
-if (!-e "build-dir") {
-	mkdir("build-dir");
-}
-if (!-e "pool") { # logs
-	mkdir("pool");
-}
-for (@ARGV) {
-	dq_dot_jigdo($_);
+	$self->{"pkgs"} = \@pkgs;
 }
 
 sub mfork ($$&) {
@@ -158,7 +118,8 @@ sub my_aria2c {
 	my $urls = join(" ",@_);
 	#$ec = system qq(aria2c -x5 -q -k1M --all-proxy="http://127.0.0.1:128" $urls);
 
-	$ec = system qq(aria2c -d $self->{dotdeb_save_dir} -l pool/log-aria2.$$ -x5 -q -k10M $urls);
+	my $runme = qq(aria2c -d $self->{dotdeb_save_dir} -l pool/log-aria2.$$ -x5 -q -k10M $urls);
+	$ec = system($runme);
 
 	if (0 eq $ec) {
 		print "$$ OK: $_[0] \n";
@@ -176,12 +137,6 @@ sub my_aria2c {
 	return $ec;
 }
 
-sub mountpoints {
-	my $self = shift;
-	if (open my $fh, '<', '/proc/mounts') {
-		while(<$fh>) {
-			chomp;
-			next unless $_;
 #
 # supaplex@wiseguy:~/usr/src/github-by-user/supaplextor/aria2c-jiggy-dl$ tail /proc/mounts 
 # /dev/loop124 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-10.0.0-i386-DVD-3 iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
@@ -191,75 +146,142 @@ sub mountpoints {
 # /dev/loop128 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-9.11.0-i386-netinst iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
 # /dev/loop129 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-edu-13.0.0-amd64-netinst iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
 # 
-			if ($_ =~ m/[^ ]+ ([^ ]+) (.*)/) {
-#				mkdir -p ?
-				if (-s "$2/" . $self->{dotdeb_dirname}) {
-					# /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-edu-13.0.0-amd64-netinst
-					my $save_to	= $self->{dotdeb_save_dir} . "/" . $self->{dotdeb_basename};
-					my $r = "rsync -vP $2/"
-						.quotemeta($self->{dotdeb_dirname}) 
-						." " .quotemeta($save_to);
-					warn "Running $r";
-					my $ec = system qq($r);
-					warn $ec if $ec;
-				}
+
+sub mountpoints {
+	my $self = shift;
+	if (open my $fh, '<', '/proc/mounts') {
+		while(<$fh>) {
+			chomp;
+			next unless $_;
+			if ($_ =~ m/\/dev\/(sr|loop)[0-9]+ ([^ ]+) /) {
+				my $destination = $2;
+				next if $destination =~ m/^\/snap\//;
+				push @{ $self->{dir_caches} }, $destination;
 			} else {
 				next;
 			}
-
 		}
 	} else {
 		die "Cannot open /proc/mounts for reading: $!";
 	}
-# So it's not in the pool directory, we have to check 
-# mount points to it + pool/etc/foo.deb.	
+}
+
+my @SITES;
+sub mirrors {
+	if (scalar(@SITES) > 0) {
+		return
+	}
+	my $parser = HTML::TokeParser::Simple->new("list");
+	my $tag;
+	while ( $tag = $parser->get_tag('a') ) {
+		if ( my $href = $tag->get_attr('href') ) {
+			if ($href =~ m/\/debian/) {
+				push(@SITES,$href)
+			}
+		}
+	}
+	return
 }
 
 sub leech {
 	my $url = shift;
 	my $self = {};
-	@{ $self->{dir_branches} } = split(/\//,$url);
-	$self->{dotdeb_basename} = pop(@{ $self->{dir_branches} });
+	return if ($url =~ m/snapshot.debian.org/);
+
+	@{ $self->{dir_branches} }	= split(/\//,$url);
+	$self->{dotdeb_basename}	= pop(@{ $self->{dir_branches} });
 	shift @{ $self->{dir_branches} };
-	$self->{dotdeb_dirname} = join("/" => @{ $self->{dir_branches} });
 
-	my $save_dir	=	"build-dir/" . $self->{dotdeb_dirname};
-	-d $save_dir	||	system("mkdir -p ".quotemeta($save_dir));
-	$self->{dotdeb_save_dir} = $save_dir;
+=head1
+$VAR1 = {
+          'dir_branches' => [
+                              'pool',
+                              'main',
+                              'h',
+                              'haskell-reflection'
+                            ],
+          'dotdeb_basename' => 'libghc-reflection-doc_2.1.8-2_all.deb'
+        };
+=cut
 
-	my $save_to	=	"$save_dir/" . $self->{dotdeb_basename}; 
-	$self->{dotdeb_save_to} = $save_to;
-	return 0 if -s $save_to;
-	for(mountpoints($self)) {
-		if (-s "$_/" . $self->{dotdeb_basename}) {
-			warn "Found $_/" . $self->{dotdeb_basename};
+# build-dir/pool/...
+	$self->{dotdeb_dirname}		= join("/" => "build-dir", @{ $self->{dir_branches} });
+	-d $self->{dotdeb_dirname}	||	system("mkdir -vp ".quotemeta($self->{dotdeb_dirname}));
+
+	my $save_to	=	$self->{dotdeb_dirname}. "/" . $self->{dotdeb_basename};
+	if (-s $save_to) {
+		warn "Already have $save_to";
+		return 0;
+	}
+
+	$self->{dotdeb_dirname}		= join("/" => "debian", @{ $self->{dir_branches} });
+	my $x = $self->{dotdeb_dirname} ."/" . $self->{dotdeb_basename};
+
+	warn "Searching for $x in mounted dirs";
+	for (@{ $self->{dir_caches}}) {
+		if (-s $x) { 
+			warn "Found $x in $_";
+#			my $ec;
+#			$ec = system qq(mkdir -p ).quotemeta($self->{dotdeb_dirname});
+#			warn $ec if $ec;
+#			$ec = system qq(rsync -vP ).quotemeta($x)." ".quotemeta($save_to);
+#			warn $ec if $ec;
+#			return 0 if -s $save_to;
+		}
+
+=head1
+#		$save_dir	= "$_/" . $self->{dotdeb_dirname};
+#		$save_dir ."/" . $self->{dotdeb_basename}
+		if (-s $save_to) {
+			warn "Found $save_dir/" . $self->{dotdeb_basename};
 			my $ec;
-			$ec = system qq(mkdir -p build-dir/).quotemeta($self->{dotdeb_dirname});
+			$ec = system qq(mkdir -p ).quotemeta($self->{dotdeb_dirname});
 			warn $ec if $ec;
-			$ec = system qq(rsync -vP $_/).$self->{dotdeb_basename};
+			$ec = system qq(rsync -vP ).quotemeta($save_dir."/").$self->{dotdeb_basename}." ".quotemeta($save_to);
 			warn $ec if $ec;
 		}
+=cut
 	}
 	my @urls;
 	for (shuffle(@SITES)) {
 		push @urls,$_.$url;
 	}
-	my $ec;
-	@{ $self->{dir_caches}} = qw( local-apt-archives debian-730-amd64-1bd2 );
-	for (@{ $self->{dir_caches}}) {
-		$save_dir	= "$_/" . $self->{dotdeb_dirname};
-		$save_to	= "$save_dir/" . $self->{dotdeb_basename}; 
-		next unless -s $save_to;
-		push @{ $self->{dotdeb_found}->{ $self->{dotdeb_basename} } }, $save_to;
-		system ("ls -l ".quotemeta($save_to)); 
-		system ("rsync -a ".quotemeta($save_to)." ".quotemeta("build-dir/".$self->{dotdeb_dirname}."/") ); 
-		return 0;
-	}
-
-	$ec = my_aria2c($self,@urls);
+    $self->{urls_for_aria2c} = \@urls;
+	$self->{dotdeb_save_dir}	=	$self->{dotdeb_dirname};
+	my $ec = my_aria2c($self,@urls); 
 	if (0 eq $ec) { return 0 }
 	# $ec = my_aria2c("http://snapshot.debian.org/archive/debian/20130615T222935Z".$url);
 	# warn "$snapshot_url/$url";
-	$ec = my_aria2c($self,"$snapshot_url/$url");
-	return $ec;
+#	$ec = my_aria2c($self,"$snapshot_url/$url");
+#	return $ec;
+}
+
+
+
+
+
+
+# main
+
+my $self = {};
+my @mountpoints = mountpoints($self);
+
+my $ec=-1;
+if (!-s "list") {
+	$ec = system qq(aria2c https://www.debian.org/mirror/list );
+	if (0 ne $ec) {
+		die ("aria2c exit code $ec.");
+	}
+}
+mirrors();
+if (!-e "build-dir") {
+	mkdir("build-dir");
+}
+if (!-e "pool") { # logs
+	mkdir("pool");
+}
+for (@ARGV) {
+	dq_dot_jigdo($self,$_);
+#	warn Dumper($self);
+	afork ($self->{"pkgs"},$THREADS,\&leech);
 }
