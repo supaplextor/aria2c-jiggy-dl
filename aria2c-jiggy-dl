@@ -1,7 +1,5 @@
 #!/usr/bin/perl
 # git clone https://github.com/supaplextor/aria2c-jiggy-dl/ 
-
-# http://mirror.debian.org/staticlist/Mirrors.masterlist
 # http://geekofpassage.blogspot.com/
 # (C) 2013 Scott Edwards <supadupa@gmail.com>
 #
@@ -118,7 +116,7 @@ sub my_aria2c {
 	my $urls = join(" ",@_);
 	#$ec = system qq(aria2c -x5 -q -k1M --all-proxy="http://127.0.0.1:128" $urls);
 
-	my $runme = qq(aria2c -d $self->{dotdeb_save_dir} -l pool/log-aria2.$$ -x5 -q -k10M $urls);
+	my $runme = qq(aria2c -d $self->{dotdeb_save_dir} -l pool/log-aria2.$$ -x5 -k10M $urls);
 	$ec = system($runme);
 
 	if (0 eq $ec) {
@@ -153,7 +151,7 @@ sub mountpoints {
 		while(<$fh>) {
 			chomp;
 			next unless $_;
-			if ($_ =~ m/\/dev\/(sr|loop)[0-9]+ ([^ ]+) /) {
+			if ($_ =~ m/\/dev\/(sr|loop)[0-9]+ ([^ ]+) /) { # pro tip: skip /snap/ mounts, include all sr0+ mounts.
 				my $destination = $2;
 				next if $destination =~ m/^\/snap\//;
 				push @{ $self->{dir_caches} }, $destination;
@@ -221,26 +219,16 @@ $VAR1 = {
 	for (@{ $self->{dir_caches}}) {
 		if (-s $x) { 
 			warn "Found $x in $_";
-#			my $ec;
-#			$ec = system qq(mkdir -p ).quotemeta($self->{dotdeb_dirname});
-#			warn $ec if $ec;
-#			$ec = system qq(rsync -vP ).quotemeta($x)." ".quotemeta($save_to);
-#			warn $ec if $ec;
-#			return 0 if -s $save_to;
-		}
-
-=head1
-#		$save_dir	= "$_/" . $self->{dotdeb_dirname};
-#		$save_dir ."/" . $self->{dotdeb_basename}
-		if (-s $save_to) {
-			warn "Found $save_dir/" . $self->{dotdeb_basename};
 			my $ec;
 			$ec = system qq(mkdir -p ).quotemeta($self->{dotdeb_dirname});
 			warn $ec if $ec;
-			$ec = system qq(rsync -vP ).quotemeta($save_dir."/").$self->{dotdeb_basename}." ".quotemeta($save_to);
-			warn $ec if $ec;
+			$ec = system qq(rsync -vP ).quotemeta($x)." ".quotemeta($save_to);
+			if ($ec) {
+				warn $ec;
+				unlink($save_to);
+			};
+			return 0 if -s $save_to;
 		}
-=cut
 	}
 	my @urls;
 	for (shuffle(@SITES)) {
@@ -249,17 +237,8 @@ $VAR1 = {
     $self->{urls_for_aria2c} = \@urls;
 	$self->{dotdeb_save_dir}	=	$self->{dotdeb_dirname};
 	my $ec = my_aria2c($self,@urls); 
-	if (0 eq $ec) { return 0 }
-	# $ec = my_aria2c("http://snapshot.debian.org/archive/debian/20130615T222935Z".$url);
-	# warn "$snapshot_url/$url";
-#	$ec = my_aria2c($self,"$snapshot_url/$url");
-#	return $ec;
+	return $ec;
 }
-
-
-
-
-
 
 # main
 
