@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -I.
 # git clone https://github.com/supaplextor/aria2c-jiggy-dl/ 
 # http://geekofpassage.blogspot.com/
 # (C) 2013 Scott Edwards <supadupa@gmail.com>
@@ -10,7 +10,7 @@
 # Note: uses 20 threads, to try and keep all (9 of my) proxy servers loaded with 2 urls concurrently at all times.
 
 if (0 eq scalar(@ARGV)) {
-	die "Pass at least one .jigdo file. All download files go here. Later, feed jigdo-lite build-dir directory for cache.";
+	die "Pass at least one .jigdo file. All download files go here. Later, feed jigdo-file build-dir directory for cache.";
 }
 
 use File::Basename qw(basename);
@@ -19,6 +19,7 @@ use Data::Dumper;
 use HTML::TokeParser::Simple;
 use strict;
 use warnings;
+#use MyDebug;
 
 my $THREADS = 1;
 my $site = "";
@@ -27,11 +28,21 @@ my @childs;
 my $pkg;
 my $pkgs;
 
+sub sys {
+	my $s = shift;
+	warn($s);
+	open(my $fh, ">>", "this.sh")
+		or die "Can't open >> this.sh: $!";
+
+	print $fh "$s\n";
+
+	return system($s);
+}
+
 sub dq_dot_jigdo
 {
 	my $self = shift;
 	my $file = shift;
-#	my $depth = 0;
 
 	open (J,"-|",qw(gzip -dc),$file) or die "Cannot gzip -dc $file: $!";
 	while(<J>) {
@@ -41,29 +52,17 @@ sub dq_dot_jigdo
 	while(<J>) {
 		next unless defined $_;
 		chomp;
-		if ($_ =~ m/^\[/) {
+		if (1 eq index($_,"[")) {
 			last;
 		}
 		if (-1 eq index($_,":")) {
-			next;
+			last;
 		}
 		$pkg = basename $_;
 		next if exists $pkgs->{$pkg};
 		if ( (!-e $pkg) or (-s "$pkg.aria2") ) {
 			my $l = "/".substr($_,1+index($_,":"));
 			$pkgs->{$pkg}=$l;
-		}
-#		$depth++;
-#		last if ($depth > 30);
-	}
-	while(<J>) {
-		next unless defined $_;
-		chomp;
-		if (-1 eq index($_,":")) {
-			next;
-		}
-		if ($_ =~ m!(http.?://snapshot.debian.org.*)!) {
-			last;
 		}
 	}
 	close J;
@@ -117,33 +116,21 @@ sub my_aria2c {
 	#$ec = system qq(aria2c -x5 -q -k1M --all-proxy="http://127.0.0.1:128" $urls);
 
 	my $runme = qq(aria2c -d $self->{dotdeb_save_dir} -l pool/log-aria2.$$ -x5 -k10M $urls);
-	$ec = system($runme);
+	$ec = sys($runme);
 
 	if (0 eq $ec) {
 		print "$$ OK: $_[0] \n";
 		unlink "pool/log-aria2.$$" or warn "Cannot unlink pool/log-aria2.$$: $!";;
 		return $ec;
 	} else {
-		warn "aria2c returned exit code $ec and no idea why... See also pool/log-aria2.$$";
-		die "I Quit!";
+		die "aria2c returned exit code $ec and no idea why... See also pool/log-aria2.$$";
 	}
-	$ec = $ec >> 8;
-	print "Error($ec): $_[0]\n";
-	open L,"< pool/log-aria2.$$" or return $ec;
-	print "$$ $_" while <L>;
-	close L;
 	return $ec;
 }
 
-#
 # supaplex@wiseguy:~/usr/src/github-by-user/supaplextor/aria2c-jiggy-dl$ tail /proc/mounts 
-# /dev/loop124 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-10.0.0-i386-DVD-3 iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
-# /dev/loop125 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-13.0.0-amd64-DVD-8 iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
-# /dev/loop126 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-12.11.0-amd64-DVD-1 iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
 # /dev/loop127 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-mac-13.2.0-amd64-netinst iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
-# /dev/loop128 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-9.11.0-i386-netinst iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
 # /dev/loop129 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-edu-13.0.0-amd64-netinst iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
-# 
 
 sub mountpoints {
 	my $self = shift;
@@ -188,7 +175,7 @@ sub leech {
 
 	@{ $self->{dir_branches} }	= split(/\//,$url);
 	$self->{dotdeb_basename}	= pop(@{ $self->{dir_branches} });
-	shift @{ $self->{dir_branches} };
+#	shift @{ $self->{dir_branches} };
 
 =head1
 $VAR1 = {
@@ -204,11 +191,11 @@ $VAR1 = {
 
 # build-dir/pool/...
 	$self->{dotdeb_dirname}		= join("/" => "build-dir", @{ $self->{dir_branches} });
-	-d $self->{dotdeb_dirname}	||	system("mkdir -vp ".quotemeta($self->{dotdeb_dirname}));
+	-d $self->{dotdeb_dirname}	||	sys("mkdir -vp ".quotemeta($self->{dotdeb_dirname}));
 
 	my $save_to	=	$self->{dotdeb_dirname}. "/" . $self->{dotdeb_basename};
 	if (-s $save_to) {
-		warn "Already have $save_to";
+#		warn "$save_to already exists, skipping.";
 		return 0;
 	}
 
@@ -217,12 +204,12 @@ $VAR1 = {
 
 	warn "Searching for $x in mounted dirs";
 	for (@{ $self->{dir_caches}}) {
-		if (-s $x) { 
-			warn "Found $x in $_";
+		if (-s $x) {
+			warn "Found $x";
 			my $ec;
-			$ec = system qq(mkdir -p ).quotemeta($self->{dotdeb_dirname});
+			$ec = sys qq(mkdir -p ).quotemeta("build-dir/".$self->{dotdeb_dirname});
 			warn $ec if $ec;
-			$ec = system qq(rsync -vP ).quotemeta($x)." ".quotemeta($save_to);
+			$ec = sys qq(rsync -vP ).quotemeta($x)." ".quotemeta($save_to);
 			if ($ec) {
 				warn $ec;
 				unlink($save_to);
@@ -234,9 +221,9 @@ $VAR1 = {
 	for (shuffle(@SITES)) {
 		push @urls,$_.$url;
 	}
-    $self->{urls_for_aria2c} = \@urls;
+    #$self->{urls_for_aria2c} = \@urls;
 	$self->{dotdeb_save_dir}	=	$self->{dotdeb_dirname};
-	my $ec = my_aria2c($self,@urls); 
+	my $ec = my_aria2c($self,@urls);
 	return $ec;
 }
 
@@ -247,7 +234,7 @@ my @mountpoints = mountpoints($self);
 
 my $ec=-1;
 if (!-s "list") {
-	$ec = system qq(aria2c https://www.debian.org/mirror/list );
+	$ec = sys qq(aria2c https://www.debian.org/mirror/list );
 	if (0 ne $ec) {
 		die ("aria2c exit code $ec.");
 	}
@@ -262,5 +249,10 @@ if (!-e "pool") { # logs
 for (@ARGV) {
 	dq_dot_jigdo($self,$_);
 #	warn Dumper($self);
-	afork ($self->{"pkgs"},$THREADS,\&leech);
+	#afork ($self->{"pkgs"},$THREADS,\&leech);
+	for my $pkg (@{ $self->{"pkgs"} }) {
+
+		my $ec = leech($pkg);
+	}
 }
+exit 0;
