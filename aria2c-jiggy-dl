@@ -27,16 +27,22 @@ my $uri = "";
 my @childs;
 my $pkg;
 my $pkgs;
+my @mountpoints;
+my $self = {};
 
 sub sys {
 	my $s = shift;
-	warn($s);
+#	warn($s);
 	open(my $fh, ">>", "this.sh")
 		or die "Can't open >> this.sh: $!";
 
 	print $fh "$s\n";
+	close $fh;
 
+#	sleep(3);
 	return system($s);
+#	return 0;
+
 }
 
 sub dq_dot_jigdo
@@ -52,7 +58,7 @@ sub dq_dot_jigdo
 	while(<J>) {
 		next unless defined $_;
 		chomp;
-		if (1 eq index($_,"[")) {
+		if (0 eq index($_,"[")) {
 			last;
 		}
 		if (-1 eq index($_,":")) {
@@ -115,7 +121,7 @@ sub my_aria2c {
 	my $urls = join(" ",@_);
 	#$ec = system qq(aria2c -x5 -q -k1M --all-proxy="http://127.0.0.1:128" $urls);
 
-	my $runme = qq(aria2c -d $self->{dotdeb_save_dir} -l pool/log-aria2.$$ -x5 -k10M $urls);
+	my $runme = qq(aria2c -d $self->{dotdeb_save_dir} -q -l pool/log-aria2.$$ -x5 -k10M $urls);
 	$ec = sys($runme);
 
 	if (0 eq $ec) {
@@ -149,6 +155,7 @@ sub mountpoints {
 	} else {
 		die "Cannot open /proc/mounts for reading: $!";
 	}
+	#warn Dumper($self);
 }
 
 my @SITES;
@@ -191,7 +198,7 @@ $VAR1 = {
 
 # build-dir/pool/...
 	$self->{dotdeb_dirname}		= join("/" => "build-dir", @{ $self->{dir_branches} });
-	-d $self->{dotdeb_dirname}	||	sys("mkdir -vp ".quotemeta($self->{dotdeb_dirname}));
+	-d $self->{dotdeb_dirname}	||	sys("mkdir -p ".quotemeta($self->{dotdeb_dirname}));
 
 	my $save_to	=	$self->{dotdeb_dirname}. "/" . $self->{dotdeb_basename};
 	if (-s $save_to) {
@@ -202,19 +209,23 @@ $VAR1 = {
 	$self->{dotdeb_dirname}		= join("/" => "debian", @{ $self->{dir_branches} });
 	my $x = $self->{dotdeb_dirname} ."/" . $self->{dotdeb_basename};
 
-	warn "Searching for $x in mounted dirs";
-	for (@{ $self->{dir_caches}}) {
-		if (-s $x) {
-			warn "Found $x";
+	mountpoints($self);
+	#warn "Searching for $x in mounted dirs ".Dumper($self,\@mountpoints);
+	for (@{ $self->{dir_caches} }) {
+		if (-s "$_/$x") {
+			#warn "$x in $_.";
 			my $ec;
 			$ec = sys qq(mkdir -p ).quotemeta("build-dir/".$self->{dotdeb_dirname});
 			warn $ec if $ec;
-			$ec = sys qq(rsync -vP ).quotemeta($x)." ".quotemeta($save_to);
+			$ec = sys qq(cp -v ).quotemeta("$_/$x")." ".quotemeta($save_to);
 			if ($ec) {
 				warn $ec;
 				unlink($save_to);
-			};
+				return $ec;
+			};			
 			return 0 if -s $save_to;
+		} else {
+#			warn "$x Not found in $_.";
 		}
 	}
 	my @urls;
@@ -223,14 +234,12 @@ $VAR1 = {
 	}
     #$self->{urls_for_aria2c} = \@urls;
 	$self->{dotdeb_save_dir}	=	$self->{dotdeb_dirname};
+
 	my $ec = my_aria2c($self,@urls);
 	return $ec;
 }
 
 # main
-
-my $self = {};
-my @mountpoints = mountpoints($self);
 
 my $ec=-1;
 if (!-s "list") {
