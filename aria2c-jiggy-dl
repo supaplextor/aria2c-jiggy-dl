@@ -21,7 +21,7 @@ use strict;
 use warnings;
 #use MyDebug;
 
-my $THREADS = 1;
+my $THREADS = 20;
 my $site = "";
 my $uri = "";
 my @childs;
@@ -29,21 +29,6 @@ my $pkg;
 my $pkgs;
 my @mountpoints;
 my $self = {};
-
-sub sys {
-	my $s = shift;
-#	warn($s);
-	open(my $fh, ">>", "this.sh")
-		or die "Can't open >> this.sh: $!";
-
-	print $fh "$s\n";
-	close $fh;
-
-#	sleep(3);
-	return system($s);
-#	return 0;
-
-}
 
 sub dq_dot_jigdo
 {
@@ -66,6 +51,7 @@ sub dq_dot_jigdo
 		}
 		$pkg = basename $_;
 		next if exists $pkgs->{$pkg};
+		warn $pkg;
 		if ( (!-e $pkg) or (-s "$pkg.aria2") ) {
 			my $l = "/".substr($_,1+index($_,":"));
 			$pkgs->{$pkg}=$l;
@@ -122,7 +108,7 @@ sub my_aria2c {
 	#$ec = system qq(aria2c -x5 -q -k1M --all-proxy="http://127.0.0.1:128" $urls);
 
 	my $runme = qq(aria2c -d $self->{dotdeb_save_dir} -q -l pool/log-aria2.$$ -x5 -k10M $urls);
-	$ec = sys($runme);
+	$ec = system($runme);
 
 	if (0 eq $ec) {
 		print "$$ OK: $_[0] \n";
@@ -198,7 +184,7 @@ $VAR1 = {
 
 # build-dir/pool/...
 	$self->{dotdeb_dirname}		= join("/" => "build-dir", @{ $self->{dir_branches} });
-	-d $self->{dotdeb_dirname}	||	sys("mkdir -p ".quotemeta($self->{dotdeb_dirname}));
+	-d $self->{dotdeb_dirname}	||	system("mkdir -p ".quotemeta($self->{dotdeb_dirname}));
 
 	my $save_to	=	$self->{dotdeb_dirname}. "/" . $self->{dotdeb_basename};
 	if (-s $save_to) {
@@ -215,9 +201,9 @@ $VAR1 = {
 		if (-s "$_/$x") {
 			#warn "$x in $_.";
 			my $ec;
-			$ec = sys qq(mkdir -p ).quotemeta("build-dir/".$self->{dotdeb_dirname});
+			$ec = system qq(mkdir -p ).quotemeta("build-dir/".$self->{dotdeb_dirname});
 			warn $ec if $ec;
-			$ec = sys qq(cp -v ).quotemeta("$_/$x")." ".quotemeta($save_to);
+			$ec = system qq(cp -v ).quotemeta("$_/$x")." ".quotemeta($save_to);
 			if ($ec) {
 				warn $ec;
 				unlink($save_to);
@@ -243,7 +229,7 @@ $VAR1 = {
 
 my $ec=-1;
 if (!-s "list") {
-	$ec = sys qq(aria2c https://www.debian.org/mirror/list );
+	$ec = system qq(aria2c https://www.debian.org/mirror/list );
 	if (0 ne $ec) {
 		die ("aria2c exit code $ec.");
 	}
@@ -258,10 +244,10 @@ if (!-e "pool") { # logs
 for (@ARGV) {
 	dq_dot_jigdo($self,$_);
 #	warn Dumper($self);
-	#afork ($self->{"pkgs"},$THREADS,\&leech);
-	for my $pkg (@{ $self->{"pkgs"} }) {
+	afork ($self->{"pkgs"},$THREADS,\&leech);
+#	for my $pkg (@{ $self->{"pkgs"} }) {
 
-		my $ec = leech($pkg);
-	}
+#		my $ec = leech($pkg);
+#	}
 }
 exit 0;
