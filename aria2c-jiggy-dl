@@ -18,7 +18,7 @@ use HTML::TokeParser::Simple;
 #use Data::Dumper;
 #use MyDebug;
 
-my $THREADS = 20; # until it's solid... beta test in progress...
+my $THREADS = 5; # until it's solid... beta test in progress...
 my $pkg;
 my $pkgs;
 my @mountpoints;
@@ -45,7 +45,7 @@ sub dq_dot_jigdo
 		}
 		$pkg = basename $_;
 		next if exists $pkgs->{$pkg};
-		warn $pkg;
+#		warn $pkg;
 		if ( (!-e $pkg) or (-s "$pkg.aria2") ) {
 			my $l = "/".substr($_,1+index($_,":"));
 			$pkgs->{$pkg}=$l;
@@ -101,15 +101,15 @@ sub my_aria2c {
 	my $urls = join(" ",@_);
 	#$ec = system qq(aria2c -x5 -q -k1M --all-proxy="http://127.0.0.1:128" $urls);
 
-	my $runme = qq(aria2c -d $self->{dotdeb_save_dir} -q -l pool/log-aria2.$$ -x5 -k10M $urls);
+	my $runme = qq(aria2c -d $self->{dotdeb_save_dir} -q -l build-dir/logs/log-aria2.$$ -x5 -k10M $urls);
 	$ec = system($runme);
 
 	if (0 eq $ec) {
 		print "$$ OK: $_[0] \n";
-		unlink "pool/log-aria2.$$" or warn "Cannot unlink pool/log-aria2.$$: $!";;
+		unlink "build-dir/logs/log-aria2.$$" or warn "Cannot unlink build-dir/logs/log-aria2.$$: $!";;
 		return $ec;
 	} else {
-		die "aria2c returned exit code $ec and no idea why... See also pool/log-aria2.$$";
+		die "aria2c returned exit code $ec and no idea why... See also build-dir/logs/log-aria2.$$";
 	}
 	return $ec;
 }
@@ -187,7 +187,7 @@ $VAR1 = {
 		return 0;
 	}
 
-	$self->{dotdeb_dirname}		= join("/" => "debian", @{ $self->{dir_branches} });
+	$self->{dotdeb_dirname}		= join("/" => "build-dir", @{ $self->{dir_branches} });
 	my $x = $self->{dotdeb_dirname} ."/" . $self->{dotdeb_basename};
 
 	mountpoints($self);
@@ -234,15 +234,12 @@ if (!-s "list") {
 	}
 }
 mirrors();
-if (!-e "build-dir") {
-	mkdir("build-dir");
-}
-if (!-e "pool") { # logs
-	mkdir("pool");
-}
+mkdir("build-dir") if (!-e "build-dir");
+mkdir("build-dir/logs") if (!-e "build-dir/logs");
 
-for (@ARGV) {
-	dq_dot_jigdo($self,$_);
+for my $jigdo (@ARGV) {
+
+	dq_dot_jigdo($self,$jigdo);
 #	warn Dumper($self);
 
 	if ($THREADS eq 1) {
@@ -254,8 +251,8 @@ for (@ARGV) {
 		warn "Multi threaded download of jigdo files with $THREADS threads...";
 		afork ($self->{"pkgs"},$THREADS,\&leech);
 	}
-	warn "Launching jigdo-lite $_";
-	$ec = system qq(jigdo-lite $_);
+	warn "Launching jigdo-lite $jigdo";
+	$ec = system qq(jigdo-lite $jigdo);
 =head1
 	$ec = system qq(echo jigdo-file recreate \
 		--template= $(basename $_ .jigdo).template \
