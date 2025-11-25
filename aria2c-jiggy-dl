@@ -18,7 +18,7 @@ use HTML::TokeParser::Simple;
 #use Data::Dumper;
 #use MyDebug;
 
-my $THREADS = 1; # until it's solid... beta test in progress...
+my $THREADS = 20; # until it's solid... beta test in progress...
 my $pkg;
 my $pkgs;
 my @mountpoints;
@@ -254,7 +254,7 @@ for (@ARGV) {
 		warn "Multi threaded download of jigdo files with $THREADS threads...";
 		afork ($self->{"pkgs"},$THREADS,\&leech);
 	}
-	warn "Launching jigdo-lite for $_ ...";
+	warn "Launching jigdo-lite $_";
 	$ec = system qq(jigdo-lite $_);
 =head1
 	$ec = system qq(echo jigdo-file recreate \
