@@ -5,7 +5,8 @@
 ## Git your code on
 
 * <code>git clone https://github.com/supaplextor/aria2c-jiggy-dl.git ; cd aria2c-jiggy-dl</code>
-* <code>sudo snap install aria2c</code>
+* <code>sudo snap install aria2c</code> <code>PATH</code> should include <code>/snap/bin</code>
 * <code>sudo apt update; sudo apt install jigdo-file</code>
 * <code>./aria2c-jiggy-dl file1-dvd.jigdo</code>
-* <code>jigdo-lite file1-dvd.jigdo</code> Note, you'll need the template file in the same directory.
+
+Don't forget to download both the jigdo and template files into the same directory.
