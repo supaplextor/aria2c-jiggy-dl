@@ -224,7 +224,7 @@ $VAR1 = {
 #  #  #  #  #  # main #  #  #  #  #  #  #  #  #  # 
 
 if (0 eq scalar(@ARGV)) {
-	die "Pass at least one .jigdo file. All download files go here. Later, feed jigdo-file build-dir directory for cache.";
+	die "Pass at least one .jigdo file. All download files go to build-dir/pool/...";
 }
 my $ec=-1;
 if (!-s "list") {
@@ -251,7 +251,7 @@ for my $jigdo (@ARGV) {
 		warn "Multi threaded download of jigdo files with $THREADS threads...";
 		afork ($self->{"pkgs"},$THREADS,\&leech);
 	}
-	warn "Launching jigdo-lite $jigdo";
+	warn "Launching jigdo-lite $jigdo ; be sure to tell it files are in the build-dir.";
 	$ec = system qq(jigdo-lite $jigdo);
 =head1
 	$ec = system qq(echo jigdo-file recreate \
