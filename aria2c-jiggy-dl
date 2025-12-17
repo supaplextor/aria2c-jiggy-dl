@@ -18,7 +18,7 @@ use HTML::TokeParser::Simple;
 #use Data::Dumper;
 #use MyDebug;
 
-my $THREADS = 5; # until it's solid... beta test in progress...
+my $THREADS = 4; # until it's solid... beta test in progress...
 my $pkg;
 my $pkgs;
 my @mountpoints;
@@ -196,7 +196,7 @@ $VAR1 = {
 		if (-s "$_/$x") {
 			#warn "$x in $_.";
 			my $ec;
-			$ec = system qq(mkdir -p ).quotemeta("build-dir/".$self->{dotdeb_dirname});
+			$ec = system qq(mkdir -vp ).quotemeta("build-dir/".$self->{dotdeb_dirname});
 			warn $ec if $ec;
 			print "\t";
 			$ec = system qq(cp -v ).quotemeta("$_/$x")." ".quotemeta($save_to);
