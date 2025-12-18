@@ -106,37 +106,15 @@ sub my_aria2c {
 
 	if (0 eq $ec) {
 		print "$$ OK: $_[0] \n";
-		unlink "build-dir/logs/log-aria2.$$" or warn "Cannot unlink build-dir/logs/log-aria2.$$: $!";;
+		my $logfile = "build-dir/logs/log-aria2.$$";
+		if (-e $logfile) {
+			unlink $logfile or warn "Cannot unlink $logfile $!";
+		}
 		return $ec;
 	} else {
 		die "aria2c returned exit code $ec and no idea why... See also build-dir/logs/log-aria2.$$";
 	}
 	return $ec;
-}
-
-# supaplex@wiseguy:~/usr/src/github-by-user/supaplextor/aria2c-jiggy-dl$ tail /proc/mounts 
-# /dev/loop127 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-mac-13.2.0-amd64-netinst iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
-# /dev/loop129 /home/supaplex/public_html/iso-images-FOSS/debian/build-dir/mounts/debian-edu-13.0.0-amd64-netinst iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,uid=1000,iocharset=utf8 0 0
-
-sub mountpoints {
-	my $self = shift;
-	return if exists $self->{dir_caches};
-	if (open my $fh, '<', '/proc/mounts') {
-		while(<$fh>) {
-			chomp;
-			next unless $_;
-			if ($_ =~ m/\/dev\/(sr|loop)[0-9]+ ([^ ]+) /) { # pro tip: skip /snap/ mounts, include all sr0+ mounts.
-				my $destination = $2;
-				next if $destination =~ m/^\/snap\//;
-				push @{ $self->{dir_caches} }, $destination;
-			} else {
-				next;
-			}
-		}
-	} else {
-		die "Cannot open /proc/mounts for reading: $!";
-	}
-	#warn Dumper($self);
 }
 
 my @SITES;
@@ -157,64 +135,22 @@ sub mirrors {
 }
 
 sub leech {
-	my $url = shift;
-	my $self = {};
-	return if ($url =~ m/snapshot.debian.org/);
+	my $pkg = shift;
+	$pkg =~ s/^\///;
+	@{ $self->{dir_branches} }	= split(/\//,$pkg);
 
-	@{ $self->{dir_branches} }	= split(/\//,$url);
 	$self->{dotdeb_basename}	= pop(@{ $self->{dir_branches} });
-#	shift @{ $self->{dir_branches} };
-
-=head1
-$VAR1 = {
-          'dir_branches' => [
-                              'pool',
-                              'main',
-                              'h',
-                              'haskell-reflection'
-                            ],
-          'dotdeb_basename' => 'libghc-reflection-doc_2.1.8-2_all.deb'
-        };
-=cut
-
-# build-dir/pool/...
-	$self->{dotdeb_dirname}		= join("/" => "build-dir", @{ $self->{dir_branches} });
+	$self->{dotdeb_dirname}		= join("/" => "build-dir" ,  @{ $self->{dir_branches} });
 	-d $self->{dotdeb_dirname}	||	system("mkdir -p ".quotemeta($self->{dotdeb_dirname}));
 
-	my $save_to	=	$self->{dotdeb_dirname}. "/" . $self->{dotdeb_basename};
-	if (-s $save_to) {
-#		warn "$save_to already exists, skipping.";
-		return 0;
-	}
+	my $save_to = $self->{dotdeb_dirname}."/".$self->{dotdeb_basename};
+	return if -s $save_to;
 
-	$self->{dotdeb_dirname}		= join("/" => "build-dir", @{ $self->{dir_branches} });
-	my $x = $self->{dotdeb_dirname} ."/" . $self->{dotdeb_basename};
-
-	mountpoints($self);
-	#warn "Searching for $x in mounted dirs ".Dumper($self,\@mountpoints);
-	for (@{ $self->{dir_caches} }) {
-		if (-s "$_/$x") {
-			#warn "$x in $_.";
-			my $ec;
-			$ec = system qq(mkdir -p ).quotemeta("build-dir/".$self->{dotdeb_dirname});
-			warn $ec if $ec;
-			print "\t";
-			$ec = system qq(cp -v ).quotemeta("$_/$x")." ".quotemeta($save_to);
-			if ($ec) {
-				warn $ec;
-				unlink($save_to);
-				return $ec;
-			};			
-			return 0 if -s $save_to;
-		} else {
-#			warn "$x Not found in $_.";
-		}
-	}
 	my @urls;
-	for (shuffle(@SITES)) {
-		push @urls,$_.$url;
+	for my $www (shuffle(@SITES)) {
+		#$www =~ s/\/$//; # goodbye tailing slash
+		push @urls,$www.$pkg;
 	}
-    #$self->{urls_for_aria2c} = \@urls;
 	$self->{dotdeb_save_dir}	=	$self->{dotdeb_dirname};
 
 	my $ec = my_aria2c($self,@urls);
