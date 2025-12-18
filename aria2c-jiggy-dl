@@ -13,12 +13,13 @@
 use strict;
 use warnings;
 use File::Basename qw(basename);
+use File::stat;
 use List::Util qw/shuffle/;
 use HTML::TokeParser::Simple;
 #use Data::Dumper;
 #use MyDebug;
 
-my $THREADS = 5; # until it's solid... beta test in progress...
+my $THREADS = 4; # until it's solid... beta test in progress...
 my $pkg;
 my $pkgs;
 my @mountpoints;
@@ -105,12 +106,11 @@ sub my_aria2c {
 	$ec = system($runme);
 
 	if (0 eq $ec) {
-		print "$$ OK: $_[0] \n";
+		print "$$ OK: $_[0] and ".(scalar(@_) -1 ) . " other mirrors\n";
 		my $logfile = "build-dir/logs/log-aria2.$$";
 		if (-e $logfile) {
 			unlink $logfile or warn "Cannot unlink $logfile $!";
 		}
-		return $ec;
 	} else {
 		die "aria2c returned exit code $ec and no idea why... See also build-dir/logs/log-aria2.$$";
 	}
@@ -151,8 +151,8 @@ sub leech {
 		#$www =~ s/\/$//; # goodbye tailing slash
 		push @urls,$www.$pkg;
 	}
-	$self->{dotdeb_save_dir}	=	$self->{dotdeb_dirname};
 
+	$self->{dotdeb_save_dir}	=	$self->{dotdeb_dirname};
 	my $ec = my_aria2c($self,@urls);
 	return $ec;
 }
